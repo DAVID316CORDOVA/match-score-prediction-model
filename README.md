@@ -123,8 +123,3 @@ WHERE run_date = CURRENT_DATE
 ORDER BY volumen_predicho DESC LIMIT 20;
 ```
 
-## Next Steps
-
-- Incorporate live betting data (odds changes)
-- Real-time inference for ongoing events
-- A/B testing: automatic vs manual promotion
