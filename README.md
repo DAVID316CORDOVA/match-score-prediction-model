@@ -1,162 +1,130 @@
-# Score de Eventos Deportivos — Predicción de Demanda y Popularidad
+# Sports Events Score — Demand and Popularity Prediction
 
-Sistema que predice demanda esperada (volumen de apuestas, número de jugadores) para 8,305 eventos deportivos virtuales y en vivo. Incorpora Wikipedia Pageviews como signal de interés global, permitiendo optimizar decisiones de promoción y ajuste de límites.
+System that predicts expected demand (total betting volume, number of players) for 8,305 virtual and live sports events. Incorporates Wikipedia Pageviews as global interest signal to optimize promotion decisions.
 
-**Estado:** En producción | **Schedule:** Diario 06:00 UTC (01:00 Lima) | **Spearman:** 0.87
+**Status:** In production | **Schedule:** Daily 06:00 UTC (01:00 Lima) | **Spearman Volume:** 0.87
 
----
+## Executive Summary
 
-## Resumen Ejecutivo
+Ensemble model that predicts:
+- **Expected volume:** Total amount to bet (Spearman 0.87)
+- **Number of players:** How many users will participate (Spearman 0.84)
 
-Modelo ensemble que predice para cada evento:
-- **Volumen esperado:** Monto total a apostar (Spearman 0.87)
-- **Número de jugadores:** Cuántos usuarios participarán (Spearman 0.84)
+Automatically selects best model (Ridge, RF, XGBoost) daily by Spearman on holdout. Enables identifying **top 100 events** with maximum potential to prioritize promotion.
 
-Selecciona automáticamente el mejor modelo (Ridge, RF, XGBoost) cada día por Spearman en holdout. Permite identificar **top 100 eventos** con máximo potencial para priorizar promoción.
+![Sports Score Graphics](./graficos_score_partidos.png)
 
----
+## Exploratory Data Analysis (EDA)
 
-## Análisis Exploratorio de Datos (EDA)
+### Coverage and Accuracy by Sport
 
-### Cobertura y Precisión por Deporte
+| Sport | Events (90d) | Accuracy | Avg Volume | Variability |
+|-------|--------------|----------|-----------|-------------|
+| Soccer | 2,540 | 94% | S/ 85K | Medium |
+| Tennis | 1,890 | 81% | S/ 42K | High |
+| Basketball | 1,120 | 79% | S/ 38K | Medium |
+| Others | 755 | 72% | S/ 25K | Very High |
 
-| Deporte | Eventos (90d) | Accuracy | Volumen Medio | Variabilidad |
-|---------|---------------|----------|---------------|-------------|
-| Fútbol | 2,540 | 94% | 85K S/ | Media |
-| Tenis | 1,890 | 81% | 42K S/ | Alta |
-| Baloncesto | 1,120 | 79% | 38K S/ | Media |
-| Otros | 755 | 72% | 25K S/ | Muy Alta |
+**Insight:** Soccer predictable (94%), other sports volatile. Model less reliable for minor sports.
 
-**Insight:** Fútbol predecible (94%), otros deportes más volátiles. Modelo menos confiable en deportes menores.
+### Feature Importance (XGBoost)
 
-### Feature Importance (XGBoost - Modelo Ganador)
-
-| Feature | Importancia | Interpretation |
+| Feature | Importance | Interpretation |
 |---------|-------------|-----------------|
-| Wikipedia Pageviews | 32% | Signal más fuerte de interés global |
-| Volumen histórico similar | 24% | Eventos similares pasados |
-| Es fixture importante | 18% | Clásico/playoff vende 3x más |
-| Deporte | 15% | Fútbol >> otros deportes |
-| Hora local (Lima) | 11% | Prime time (20:00-23:00) 2.5x más |
+| Wikipedia Pageviews | 32% | Strongest signal |
+| Historical volume similar | 24% | Past similar events |
+| Important fixture | 18% | Classic/playoff |
+| Sport | 15% | Soccer >> others |
+| Local time (Lima) | 11% | Prime time 3x more |
 
-**Conclusión:** Wikipedia Pageviews es predictor más fuerte (32%). Eventos que trendan en Wikipedia venden 2-3x más.
+**Conclusion:** Wikipedia is strongest predictor (32%).
 
-### Comparación de Modelos (Últimos 90 días)
+### Model Comparison
 
-| Modelo | Spearman Volumen | Spearman Jugadores | Tiempo | Días Ganados |
-|--------|------------------|-------------------|--------|-------------|
-| **XGBoost** | **0.87** | **0.84** | 3.2s | 45/90 |
-| Ridge | 0.81 | 0.79 | 0.1s | 35/90 |
-| RandomForest | 0.84 | 0.82 | 2.1s | 20/90 |
+| Model | Spearman Volume | Spearman Players | Days Won |
+|--------|-----------------|-----------------|---------|
+| **XGBoost** | **0.87** | **0.84** | 45/90 |
+| Ridge | 0.81 | 0.79 | 35/90 |
+| RandomForest | 0.84 | 0.82 | 20/90 |
 
-**Decisión:** XGBoost ganó 50% de días. Selección automática diaria = modelo adaptativo a cambios en patrón.
+**Decision:** XGBoost won 50% of days. Daily selection = adaptive to pattern changes.
 
----
-
-## Solución Implementada
-
-### Features (12 totales)
-
-**Interés Global (1):**
-- Wikipedia Pageviews (día anterior)
-
-**Fixture Metadata (4):**
-- Clásico/playoff (binario)
-- Equipos top (ranking)
-- Liga (categoría)
-- Importancia del partido (ranking)
-
-**Temporal (3):**
-- Día de semana
-- Hora local en Perú
-- Minutos hasta inicio
-
-**Histórico (3):**
-- Volumen promedio eventos similares
-- Número jugadores promedio
-- Ticket promedio por deporte
-
-**Demanda (1):**
-- Ratio venta/jugadores histórico
-
-### Ensemble Dinámico
+## Dynamic Ensemble Model
 
 ```python
-# Entrenar 3 modelos en paralelo
+# Train 3 models in parallel
 Ridge(alpha=1.0)
 RandomForest(n_estimators=100, max_depth=10)
 XGBoost(n_estimators=200, learning_rate=0.05)
 
-# Elegir mejor por Spearman en holdout (últimos 14 días)
-mejor_modelo = max(modelos, key=lambda m: spearman_rank(m.predict(X_test), y_test))
+# Choose best by Spearman on holdout (last 14 days)
+best_model = max(models, key=lambda m: spearman(m.predict(X_test), y_test))
 
-# Usar ganador para predicción del día
-volumen_predicho = mejor_modelo.predict(X_proximos_eventos)
+# Predict next events
+volume = best_model.predict(X_next)
 ```
 
-### Pipeline Diario
+## Features (12 total)
 
-1. Fetch histórico: 90 días de eventos liquidados
-2. Extraer features: Wikipedia, metadata, temporal, histórico
-3. Entrenar 3 modelos en paralelo
-4. Evaluar en holdout (últimos 14 días)
-5. Elegir modelo con mayor Spearman
-6. Predecir próximos 100 eventos
-7. Publicar tabla con ranking de demanda
+**Global Interest:** Wikipedia Pageviews (previous day)
 
----
+**Fixture Metadata:** Classic/playoff, top teams, league, importance
 
-## Resultados
+**Temporal:** Day of week, local time Lima, minutes to start
 
-### Performance por Deporte
+**Historical:** Avg volume similar events, avg players, avg ticket
 
-| Deporte | MAE Volumen | MAE Jugadores | Confianza |
-|---------|------------|---------------|-----------|
-| Fútbol | 25K S/ | 45 | Muy Alta |
-| Tenis | 18K S/ | 38 | Alta |
-| Baloncesto | 12K S/ | 28 | Media |
-| Otros | 8K S/ | 12 | Baja |
+**Demand:** Historical volume/players ratio
 
-### Predicción vs Realidad (Últimas 2 semanas)
+## Daily Pipeline
 
-Período: 2026-10-20 al 11-02
-Error promedio: 1% (volumen medio predicho vs real)
+1. Fetch: 90 days of liquidated events
+2. Extract features: Wikipedia, metadata, temporal, historical
+3. Train 3 models in parallel
+4. Evaluate on holdout (last 14 days)
+5. Select model with highest Spearman
+6. Predict next 100 events
+7. Publish ranking table
 
----
+## Results
 
-## Segmentación de Recomendación
+### Performance by Sport
 
-| Percentil Volumen | Acción Recomendada |
+| Sport | MAE Volume | MAE Players | Confidence |
+|--------|-----------|-------------|-----------|
+| Soccer | S/ 25K | 45 | Very High |
+| Tennis | S/ 18K | 38 | High |
+| Basketball | S/ 12K | 28 | Medium |
+| Others | S/ 8K | 12 | Low |
+
+### Prediction vs Reality
+
+Period: 2026-10-20 to 11-02. Average error: 1% (predicted vs real volume)
+
+## Segmentation
+
+| Volume Percentile | Recommended Action |
 |------------------|-------------------|
-| 90+ | Máxima promoción, límites altos |
-| 75-90 | Promoción estándar |
-| 50-75 | Mínima promoción |
-| <50 | Sin promoción |
+| 90+ | Maximum promotion, high limits |
+| 75-90 | Standard promotion |
+| 50-75 | Minimal promotion |
+| <50 | No promotion |
 
----
-
-## Cómo Ejecutarlo
-
-### En Airflow
+## Execution
 
 ```bash
+# Airflow
 airflow dags trigger dag_score_partidos_daily
-```
 
-### Ver Top Eventos
-
-```sql
+# Top events
 SELECT evento_id, deporte, volumen_predicho, jugadores_predictos, confianza
 FROM ml_score_partidos.predicciones_diarias
 WHERE run_date = CURRENT_DATE
-ORDER BY volumen_predicho DESC
-LIMIT 20;
+ORDER BY volumen_predicho DESC LIMIT 20;
 ```
 
----
+## Next Steps
 
-## Próximos Pasos
-
-- Incorporar datos de apuestas en vivo (cambio de cuota)
-- Real-time inference para eventos que comienzan
-- A/B testing: promoción automática vs manual
+- Incorporate live betting data (odds changes)
+- Real-time inference for ongoing events
+- A/B testing: automatic vs manual promotion
